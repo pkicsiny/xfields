@@ -154,9 +154,6 @@ def test_beambeam3d_beamstrahlung_pic(test_context):
     record_b2_pic = line_b2.start_internal_logging_for_elements_of_type(
         xf.BeamBeamPIC3D, capacity={"beamstrahlungtable": int(3e5)})
 
-    record_b1_pic.move(_context=xo.context_default)
-    record_b2_pic.move(_context=xo.context_default)
-
     #####################
     # track 1 collision #
     #####################
@@ -165,7 +162,10 @@ def test_beambeam3d_beamstrahlung_pic(test_context):
     
     line_b1.stop_internal_logging_for_elements_of_type(xf.BeamBeamPIC3D)
     line_b2.stop_internal_logging_for_elements_of_type(xf.BeamBeamPIC3D)
-    
+
+    record_b1_pic.move(_context=xo.context_default)
+    record_b2_pic.move(_context=xo.context_default)
+
     #####################################
     # test #1: compare against formulas #
     #####################################
