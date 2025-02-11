@@ -24,6 +24,7 @@ def test_beambeam3d_beamstrahlung_pic(test_context):
     print(repr(test_context))
 
     # fcc ttbar 4 IP
+    # https://indico.cern.ch/event/1202105/contributions/5408583/attachments/2659051/4608141/FCCWeek_Optics_Oide_230606.pdf
     bunch_intensity     =  1.55e11  # [e]
     energy              =  182.5  # [GeV]
     p0c                 =  182.5e9  # [eV]
