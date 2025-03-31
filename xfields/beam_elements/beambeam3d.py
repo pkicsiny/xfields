@@ -186,6 +186,9 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
          #lumi
          'flag_luminosity': xo.Int64,
 
+         #crabwaist
+         'flag_crabwaist': xo.Int64,
+         'k2_factor': xo.Float64,
     }
 
     _internal_record_class = BeamBeamBiGaussian3DRecord
@@ -254,6 +257,9 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
                     flag_beamsize_effect=1,
 
                     flag_luminosity=0,
+
+                    flag_crabwaist=0,
+                    k2_factor=1.0,
 
                     slices_other_beam_x_center_star=None,
                     slices_other_beam_px_center_star=None,
@@ -468,6 +474,9 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
         self._init_bhabha(flag_bhabha, compt_x_min, flag_beamsize_effect)
 
         self._init_luminosity(flag_luminosity)
+
+        self.flag_crabwaist = flag_crabwaist
+        self.k2_factor = k2_factor
 
         if other_beam_q0 is None:
             other_beam_q0 = 0
