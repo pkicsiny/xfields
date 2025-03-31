@@ -546,23 +546,6 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
                             self.config_for_update.slicer.bin_widths_beamstrahlung
                                 / np.cos(self.phi))
 
-#        if (slices_other_beam_zeta_bin_width_star_beamstrahlung is None and
-#            slices_other_beam_zeta_bin_width_beamstrahlung is not None):
-#            assert not np.isscalar(slices_other_beam_zeta_bin_width_beamstrahlung), (
-#                'slices_other_beam_zeta_bin_width_beamstrahlung must be an array')
-#            assert (len(slices_other_beam_zeta_bin_width_beamstrahlung)
-#                == len(self.slices_other_beam_num_particles))
-#            slices_other_beam_zeta_bin_width_star_beamstrahlung = (
-#                slices_other_beam_zeta_bin_width_beamstrahlung / np.cos(self.phi))
-#
-#        if slices_other_beam_zeta_bin_width_star_beamstrahlung is not None:
-#            assert not np.isscalar(slices_other_beam_zeta_bin_width_star_beamstrahlung), (
-#                'slices_other_beam_zeta_bin_width_star_beamstrahlung must be an array')
-#            assert (len(slices_other_beam_zeta_bin_width_star_beamstrahlung)
-#                == len(self.slices_other_beam_num_particles))
-#            self.slices_other_beam_zeta_bin_width_star_beamstrahlung = self._arr2ctx(
-#                np.array(slices_other_beam_zeta_bin_width_star_beamstrahlung))
-
         if slices_other_beam_zeta_bin_width_beamstrahlung is not None:
             assert not np.isscalar(slices_other_beam_zeta_bin_width_beamstrahlung), (
                 'slices_other_beam_zeta_bin_width_beamstrahlung must be an array')
@@ -908,7 +891,6 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
                                                 at_turn,
                                                 internal_tag=self.config_for_update._i_step):
             # Compute moments
-            #self.config_for_update.slicer.assign_slices(particles)  # in this the bin edges are fixed with TempSlicer
             self.moments = self.config_for_update.slicer.compute_moments(particles)  # assign to slices happens inside here
 
             pipeline_manager.send_message(self.moments,
@@ -954,7 +936,6 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
 
     @phi.setter
     def phi(self, value):
-        #raise NotImplementedError("Setting phi is not implemented yet")
         _init_alpha_phi(self, phi=value)
 
         # Trigger properties to set corresponding starred quantities
@@ -1008,7 +989,6 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
 
     @alpha.setter
     def alpha(self, value):
-        #raise NotImplementedError("Setting alpha is not implemented yet")
         _init_alpha_phi(self, alpha=value)
 
         # Trigger properties to set corresponding starred quantities
