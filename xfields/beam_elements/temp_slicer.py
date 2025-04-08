@@ -6,11 +6,14 @@ from ..general import _pkg_root
 
 _digitize_kernel = xo.Kernel(
             c_name="digitize",
-            args=[xo.Arg(xp.Particles._XoStruct, name='particles'),
+            args=[xo.Arg(xo.Int64, name='num_macroparticles'),
                   xo.Arg(xo.Float64, const=True, pointer=True, name='particles_zeta'),
+                  xo.Arg(xo.Int64, const=True, pointer=True, name='particles_state'),
                   xo.Arg(xo.Float64, const=True, pointer=True, name='bin_edges'),
                   xo.Arg(xo.Int64, name='n_slices'),
-                  xo.Arg(xo.Int64, pointer=True, name='particles_slice')]
+                  xo.Arg(xo.Int64, pointer=True, name='particles_slice')
+                  ],
+            n_threads="num_macroparticles",
 )
 
 _compute_slice_moments_kernel = xo.Kernel(
@@ -23,10 +26,11 @@ _compute_slice_moments_kernel = xo.Kernel(
 )
 
 
-_compute_slice_moments_cuda_sums_per_slice_kernel = xo.Kernel(
-            c_name="compute_slice_moments_cuda_sums_per_slice",
+_compute_slice_moments_gpu_sums_per_slice_kernel = xo.Kernel(
+            c_name="compute_slice_moments_gpu_sums_per_slice",
             args=[xo.Arg(xp.Particles._XoStruct, name='particles'),
                   xo.Arg(xo.Int64, pointer=True, name='particles_slice'),
+                  xo.Arg(xo.Float64, pointer=True, name='sdata'),
                   xo.Arg(xo.Float64, pointer=True, name='moments'),
                   xo.Arg(xo.Int64, const=True, name='num_macroparticles'),
                   xo.Arg(xo.Int64, const=True, name='n_slices'),
@@ -35,8 +39,8 @@ _compute_slice_moments_cuda_sums_per_slice_kernel = xo.Kernel(
             n_threads="num_macroparticles",
 )
 
-_compute_slice_moments_cuda_moments_from_sums_kernel = xo.Kernel(
-            c_name="compute_slice_moments_cuda_moments_from_sums",
+_compute_slice_moments_gpu_moments_from_sums_kernel = xo.Kernel(
+            c_name="compute_slice_moments_gpu_moments_from_sums",
             args=[xo.Arg(xo.Float64, pointer=True, name='moments'),
                   xo.Arg(xo.Int64, const=True, name='n_slices'),
                   xo.Arg(xo.Int64, const=True, name='weight'),
@@ -44,10 +48,10 @@ _compute_slice_moments_cuda_moments_from_sums_kernel = xo.Kernel(
             n_threads="n_slices",
 )
 
-_temp_slicer_kernels = {'digitize': _digitize_kernel,
-                        'compute_slice_moments':_compute_slice_moments_kernel,
-                        'compute_slice_moments_cuda_sums_per_slice':_compute_slice_moments_cuda_sums_per_slice_kernel,
-                        'compute_slice_moments_cuda_moments_from_sums':_compute_slice_moments_cuda_moments_from_sums_kernel,
+_temp_slicer_kernels = {'digitize': _digitize_kernel, # cpu, opencl
+                        'compute_slice_moments':_compute_slice_moments_kernel, # cpu
+                        'compute_slice_moments_gpu_sums_per_slice':_compute_slice_moments_gpu_sums_per_slice_kernel, # cuda, opencl
+                        'compute_slice_moments_gpu_moments_from_sums':_compute_slice_moments_gpu_moments_from_sums_kernel, # cuda, opencl
                         }
 
 
@@ -247,22 +251,21 @@ class TempSlicer(xo.HybridClass):
 
     def get_slice_indices(self, particles):
         context = particles._context
-        if isinstance(context, xo.ContextPyopencl):
-            raise NotImplementedError
 
         bin_edges = context.nparray_to_context_array(self.bin_edges)
-
+ 
         if isinstance(context, xo.ContextCupy):
             digitize = particles._context.nplike_lib.digitize  # only works with cpu and cupy
             indices = digitize(particles.zeta, bin_edges, right=True)
-        else:  # OpenMP implementation of binary search for CPU
-            indices = particles._context.nplike_lib.zeros_like(particles.zeta, dtype=particles._context.nplike_lib.int64)
-            self._context.kernels.digitize(particles = particles, particles_zeta = particles.zeta,
-                                                    bin_edges = bin_edges, n_slices = self.num_slices,
-                                                    particles_slice = indices)
-
-        indices -= 1 # In digitize, 0 means before the first edge
-        indices[particles.state <=0 ] = -1
+            indices -= 1 # In digitize, 0 means before the first edge
+            indices[particles.state <=0 ] = -1 # pyopencl does not support boolean indexing
+        else:  # OpenMP and OpenCL implementation of binary search
+            indices = particles._context.nplike_lib.zeros_like(particles.zeta).astype(np.int64) # dtype= doesnt work for pyopencl
+            self._context.kernels.digitize(num_macroparticles=particles._capacity, 
+                                           particles_zeta=particles.zeta,
+                                           particles_state=particles.state,
+                                           bin_edges=bin_edges, n_slices=self.num_slices,
+                                           particles_slice=indices) # does -1 and boolean indexing in kernel
 
         indices_out = context.zeros(shape=indices.shape, dtype=np.int64)
         indices_out[:] = indices
@@ -279,27 +282,43 @@ class TempSlicer(xo.HybridClass):
         if update_assigned_slices:
             self.assign_slices(particles)
 
-        if isinstance(context, xo.ContextPyopencl):
-            raise NotImplementedError
+        #if isinstance(context, xo.ContextPyopencl):
+        #    raise NotImplementedError
 
-        if isinstance(context, xo.ContextCupy):
+        if isinstance(context, xo.ContextCupy) or isinstance(context, xo.ContextPyopencl):
             slice_moments = self._context.zeros(self.num_slices*(6+10+1+6+10),dtype=np.float64)  # sums (16) + count (1) + moments (16)
-            self._context.kernels.compute_slice_moments_cuda_sums_per_slice(particles=particles, particles_slice=particles.slice,
-                                                           moments=slice_moments, num_macroparticles=np.int64(len(particles.slice)),
-                                                           n_slices=np.int64(self.num_slices), shared_mem_size_bytes=np.int64(self.num_slices*17*8))
-
-            self._context.kernels.compute_slice_moments_cuda_moments_from_sums(moments=slice_moments, n_slices=np.int64(self.num_slices),
+            if isinstance(context, xo.ContextCupy):
+                self._context.kernels.compute_slice_moments_gpu_sums_per_slice(
+                                                               particles=particles, 
+                                                               particles_slice=particles.slice,
+                                                               moments=slice_moments, 
+                                                               num_macroparticles=np.int64(len(particles.slice)),
+                                                               n_slices=np.int64(self.num_slices), 
+                                                               shared_mem_size_bytes=np.int64(self.num_slices*17*8))
+            else:
+                from pyopencl import LocalMemory as cllm
+                sdata = cllm(self.num_slices*17*8)  # 17 is for count (1), first (6) and second (10) moments, 8 is for double (8 bytes)
+#                self._context.kernels.compute_slice_moments_gpu_sums_per_slice.set_arg(2, sdata)
+                self._context.kernels.compute_slice_moments_gpu_sums_per_slice(
+                                                               particles=particles, 
+                                                               particles_slice=particles.slice,
+                                                               sdata=sdata,
+                                                               moments=slice_moments, 
+                                                               num_macroparticles=np.int64(len(particles.slice)),
+                                                               n_slices=np.int64(self.num_slices), 
+                                                               shared_mem_size_bytes=np.int64(self.num_slices*17*8))
+            self._context.kernels.compute_slice_moments_gpu_moments_from_sums(moments=slice_moments, n_slices=np.int64(self.num_slices),
                                                            weight=particles.weight.get()[0], threshold_num_macroparticles=np.int64(threshold_num_macroparticles))
             return slice_moments[int(self.num_slices*16):]
 
         # context CPU with OpenMP
         else:
-
             slice_moments = self._context.zeros(self.num_slices*(1+6+10),dtype=np.float64)
 
             # np.cumsum[-1] =/= np.sum due to different order of summation
             # use np.isclose instead of ==; np.sum does pariwise sum which orders values differently thus causing a numerical error
             # see: https://stackoverflow.com/questions/69610452/why-does-the-last-entry-of-numpy-cumsum-not-necessarily-equal-numpy-sum
+
             self._context.kernels.compute_slice_moments(particles=particles, particles_slice=particles.slice,
                                                     moments=slice_moments, n_slices=self.num_slices,
                                                     threshold_num_macroparticles=threshold_num_macroparticles)
