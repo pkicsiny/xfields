@@ -260,7 +260,7 @@ class TempSlicer(xo.HybridClass):
             indices -= 1 # In digitize, 0 means before the first edge
             indices[particles.state <=0 ] = -1 # pyopencl does not support boolean indexing
         else:  # OpenMP and OpenCL implementation of binary search
-            indices = particles._context.nplike_lib.zeros_like(particles.zeta).astype(np.int64) # dtype= doesnt work for pyopencl
+            indices = particles._context.nplike_lib.zeros_like(particles.zeta).astype(np.int64) # dtype argument doesnt exist for pyopencl
             self._context.kernels.digitize(num_macroparticles=particles._capacity, 
                                            particles_zeta=particles.zeta,
                                            particles_state=particles.state,

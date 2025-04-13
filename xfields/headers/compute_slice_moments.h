@@ -3,19 +3,73 @@
 // Copyright (c) CERN, 2021.                   //
 // ########################################### //
 
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_CPU
+#define XFIELDS_COMPUTESLICEMOMENTS_CPU //only_for_context cpu_serial cpu_openmp
+#endif
+
 #ifndef XFIELDS_COMPUTESLICEMOMENTS_CUDA
 #define XFIELDS_COMPUTESLICEMOMENTS_CUDA //only_for_context cuda
 #endif
 
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_OCL
+#define XFIELDS_COMPUTESLICEMOMENTS_OCL //only_for_context opencl
+#endif
+
+#if defined(__CUDA_ARCH__)
+    #define AtomicAdd atomicAdd
+
+#elif defined(__OPENCL_VERSION__)
+inline void AtomicAddOCL(volatile __global double *source, const float operand) {
+    union {
+        unsigned int intVal;
+        float floatVal;
+    } newVal;
+    union {
+        unsigned int intVal;
+        float floatVal;
+    } prevVal;
+    do {
+        prevVal.floatVal = *source;
+        newVal.floatVal = prevVal.floatVal + operand;
+    } while (atomic_cmpxchg((volatile __global unsigned int *)source, prevVal.intVal, newVal.intVal) != prevVal.intVal);
+}
+#define AtomicAdd AtomicAddOCL
+#endif
+
+// functons that are not used
+#ifdef XFIELDS_COMPUTESLICEMOMENTS_CPU
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
+#define XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
+void compute_slice_moments_gpu_sums_per_slice(ParticlesData particles, int64_t* particles_slice, double* sdata, double* moments, const int64_t num_macroparticles, const int64_t n_slices, const int64_t shared_mem_size_bytes){}
+void compute_slice_moments_gpu_moments_from_sums(double* moments, const int64_t n_slices, const int64_t weight, const int64_t threshold_num_macroparticles){}
+#endif
+#endif
+
+#ifdef XFIELDS_COMPUTESLICEMOMENTS_CUDA
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_DIGI
+#define XFIELDS_COMPUTESLICEMOMENTS_GIGI
+/*gpufun*/ int64_t binary_search(/*gpuglmem*/ const double* bins, int first, int last, const double x){}
+/*gpukern*/ void digitize(int num_macroparticles, /*gpuglmem*/ const double* particles_zeta, /*gpuglmem*/ const int64_t* particles_state, /*gpuglmem*/ const double* bin_edges, int n_slices, /*gpuglmem*/ int64_t* particles_slice){}
+#endif
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_CSM
+#define XFIELDS_COMPUTESLICEMOMENTS_CSM
+/*gpukern*/ void compute_slice_moments(ParticlesData particles, /*gpuglmem*/ int64_t* particles_slice, /*gpuglmem*/ double* moments, int n_slices, int threshold_n_macroparticles){}
+#endif
+#endif
+
+#ifdef XFIELDS_COMPUTESLICEMOMENTS_OCL
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_CSM
+#define XFIELDS_COMPUTESLICEMOMENTS_CSM
+/*gpukern*/ void compute_slice_moments(ParticlesData particles, /*gpuglmem*/ int64_t* particles_slice, /*gpuglmem*/ double* moments, int n_slices, int threshold_n_macroparticles){}
+#endif
+#endif
+
+
 #ifndef XFIELDS_COMPUTESLICEMOMENTS_CUDA
-
-#ifndef XFIELDS_COMPUTESLICEMOMENTS_H__
-#define XFIELDS_COMPUTESLICEMOMENTS_H__
-
-void compute_slice_moments_cuda_sums_per_slice(ParticlesData particles, int64_t* particles_slice, double* moments, const int64_t num_macroparticles, const int64_t n_slices, const int64_t shared_mem_size_bytes){};
-void compute_slice_moments_cuda_moments_from_sums(double* moments, const int64_t n_slices, const int64_t weight, const int64_t threshold_num_macroparticles){};
-
-int64_t binary_search(const double* bins, int first, int last, const double x){
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_DIGI
+#define XFIELDS_COMPUTESLICEMOMENTS_DIGI
+/*gpufun*/ int64_t binary_search(
+    /*gpuglmem*/ const double* bins, int first, int last, const double x){
     // bins must be in descending order: bins[i-1] >= x > bins[i]. If bins in increasing order, change < to >.
     if (x <= bins[last])
         return last+1;
@@ -35,18 +89,30 @@ int64_t binary_search(const double* bins, int first, int last, const double x){
     return 0;
 }
 
-void digitize(ParticlesData particles, const double* particles_zeta, const double* bin_edges, int n_slices, int64_t* particles_slice){
-  int n_part = ParticlesData_get__capacity(particles);
+
+/*gpukern*/ void digitize(
+         int num_macroparticles, 
+        /*gpuglmem*/ const double* particles_zeta,
+        /*gpuglmem*/ const int64_t* particles_state, 
+        /*gpuglmem*/ const double* bin_edges, 
+         int n_slices, 
+        /*gpuglmem*/int64_t* particles_slice
+){
   int first = 0;
   int last = n_slices;
+ 
+  int i = get_global_id(0); //only_for_context opencl
   #pragma omp parallel for //only_for_context cpu_openmp
-  for (int i=0; i<n_part; i++) {
-//      int tid = omp_get_thread_num(); //only_for_context cpu_openmp
-//      printf("[digitize] omp thread %d\n", tid); //only_for_context cpu_openmp
-      particles_slice[i] = binary_search(bin_edges, first, last, particles_zeta[i]);
-  }
+  for (int i=0; i<num_macroparticles; i++) { //only_for_context cpu_serial cpu_openmp
+      particles_slice[i] = particles_state[i]==1 ? binary_search(bin_edges, first, last, particles_zeta[i]) - 1 : -1;
+  } //only_for_context cpu_serial cpu_openmp
 }
+#endif // DIGI
 
+
+#ifdef XFIELDS_COMPUTESLICEMOMENTS_CPU
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_CSM
+#define XFIELDS_COMPUTESLICEMOMENTS_CSM
 void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, double* moments, int n_slices, int threshold_n_macroparticles) {
     int n_first_moments = 7;
     int n_second_moments = 10;
@@ -155,35 +221,50 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
     }
 
 }
-#endif /* XFIELDS_COMPUTESLICEMOMENTS_H__ */
-#endif /* XFIELDS_COMPUTESLICEMOMENTS_CUDA */
+#endif // CSM
+#endif // CPU 
+#endif // CUDA
 
 
-#ifdef XFIELDS_COMPUTESLICEMOMENTS_CUDA
-
-#ifndef XFIELDS_COMPUTESLICEMOMENTS_CUH__
-#define XFIELDS_COMPUTESLICEMOMENTS_CUH__
-__global__ void digitize(ParticlesData particles, const double* particles_zeta, const double* bin_edges, int n_slices, int64_t* particles_slice){};
-__global__ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, double* moments, int n_slices, int threshold_n_macroparticles){};
-
-__global__ void compute_slice_moments_cuda_sums_per_slice(ParticlesData particles,
-                        int64_t* particles_slice, double* moments, const int64_t num_macroparticles, const int64_t n_slices, const int64_t shared_mem_size_bytes) {
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_CPU
+#ifndef XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
+#define XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
+/*gpukern*/ void compute_slice_moments_gpu_sums_per_slice(
+        ParticlesData particles,
+        /*gpuglmem*/ int64_t* particles_slice, 
+        /*gpuglmem*/ double* moments,
+        /*gpuglmem*/ double* sdata, //only_for_context opencl 
+         const int64_t num_macroparticles,
+         const int64_t n_slices, 
+         const int64_t shared_mem_size_bytes
+) {
 
         // each thread loads one element from global to shared mem
-        unsigned int tid = threadIdx.x;
-        unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
+        unsigned int tid = threadIdx.x; //only_for_context guda
+        unsigned int bdx = blockDim.x //only_for_context cuda
+        unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x; //only_for_context cuda
+
+        unsigned int tid = get_local_id(0); //only_for_context opencl
+        unsigned int bdx = get_local_size(0); //only_for_context opencl
+        unsigned int gid = get_global_id(0); //only_for_context opencl
+
+
+        // len n_slices * 17 (6 x sum(xi), 10 x sum(xi*xy), 1 x count)
+        extern __shared__ double sdata[];  //only_for_context cuda
 
 	// init shared memory used for partial sums
-        extern __shared__ double sdata[];  // len n_slices * 17 (6 x sum(xi), 10 x sum(xi*xy), 1 x count)
-        int full_pass = (int)(17*n_slices / blockDim.x);
-        int residual = (17*n_slices)%blockDim.x;
-        for (int i=0; i<full_pass; i++){
-          sdata[i*blockDim.x + tid] = 0.0;
+        unsigned int full_pass = (int)(17*n_slices / bdx);
+        unsigned int residual = (17*n_slices)%bdx;
+        for (unsigned int i=0; i<full_pass; i++){
+          sdata[i*bdx + tid] = 0.0;
         }
 	if (tid < residual){
-          sdata[full_pass*blockDim.x+tid] = 0.0;
+          sdata[full_pass*bdx+tid] = 0.0;
         }
-        __syncthreads();
+
+        __syncthreads(); //only_for_context cuda
+        barrier(CLK_LOCAL_MEM_FENCE); //only_for_context opencl
+
         if (gid < num_macroparticles){
           int64_t s_i    = particles_slice[gid];
 	  if (s_i >= 0 && s_i < n_slices){
@@ -195,46 +276,54 @@ __global__ void compute_slice_moments_cuda_sums_per_slice(ParticlesData particle
               double delta_i = ParticlesData_get_delta(particles,gid); 
     
               // count
-              atomicAdd(&sdata[16*n_slices+s_i], 1);
+              AtomicAdd(&sdata[16*n_slices+s_i], 1);
     
               // sum(xi)
-              atomicAdd(&sdata[           s_i],     x_i);
+              AtomicAdd(&sdata[           s_i],     x_i);
     
-    	      atomicAdd(&sdata[  n_slices+s_i],    px_i);
-    	      atomicAdd(&sdata[2*n_slices+s_i],     y_i);
-              atomicAdd(&sdata[3*n_slices+s_i],    py_i);
-              atomicAdd(&sdata[4*n_slices+s_i],  zeta_i);
-              atomicAdd(&sdata[5*n_slices+s_i], delta_i);
+    	      AtomicAdd(&sdata[  n_slices+s_i],    px_i);
+    	      AtomicAdd(&sdata[2*n_slices+s_i],     y_i);
+              AtomicAdd(&sdata[3*n_slices+s_i],    py_i);
+              AtomicAdd(&sdata[4*n_slices+s_i],  zeta_i);
+              AtomicAdd(&sdata[5*n_slices+s_i], delta_i);
     
               // sum(xi*xj)
-              atomicAdd(&sdata[ 6*n_slices+s_i],     x_i*x_i);
-              atomicAdd(&sdata[ 7*n_slices+s_i],    x_i*px_i);
-              atomicAdd(&sdata[ 8*n_slices+s_i],     x_i*y_i);
-              atomicAdd(&sdata[ 9*n_slices+s_i],    x_i*py_i);
-              atomicAdd(&sdata[10*n_slices+s_i],   px_i*px_i);
-              atomicAdd(&sdata[11*n_slices+s_i],    px_i*y_i);
-              atomicAdd(&sdata[12*n_slices+s_i],   px_i*py_i);
-              atomicAdd(&sdata[13*n_slices+s_i],     y_i*y_i);
-              atomicAdd(&sdata[14*n_slices+s_i],    y_i*py_i);
-              atomicAdd(&sdata[15*n_slices+s_i],   py_i*py_i);
+              AtomicAdd(&sdata[ 6*n_slices+s_i],     x_i*x_i);
+              AtomicAdd(&sdata[ 7*n_slices+s_i],    x_i*px_i);
+              AtomicAdd(&sdata[ 8*n_slices+s_i],     x_i*y_i);
+              AtomicAdd(&sdata[ 9*n_slices+s_i],    x_i*py_i);
+              AtomicAdd(&sdata[10*n_slices+s_i],   px_i*px_i);
+              AtomicAdd(&sdata[11*n_slices+s_i],    px_i*y_i);
+              AtomicAdd(&sdata[12*n_slices+s_i],   px_i*py_i);
+              AtomicAdd(&sdata[13*n_slices+s_i],     y_i*y_i);
+              AtomicAdd(&sdata[14*n_slices+s_i],    y_i*py_i);
+              AtomicAdd(&sdata[15*n_slices+s_i],   py_i*py_i);
 	  }
         }
-        __syncthreads();
+
+        __syncthreads(); //only_for_context cuda
+        barrier(CLK_LOCAL_MEM_FENCE); //only_for_context opencl
 
         // write count and first and second order partial sums from shared to global mem
-        for (int i=0; i<full_pass; i++){
-              atomicAdd(&moments[i*blockDim.x + tid], sdata[i*blockDim.x + tid]);
+        for (unsigned int i=0; i<full_pass; i++){
+              AtomicAdd(&moments[i*bdx + tid], sdata[i*bdx + tid]);
         }
         if (tid < residual){
-              atomicAdd(&moments[full_pass*blockDim.x + tid], sdata[full_pass*blockDim.x + tid]);
+              AtomicAdd(&moments[full_pass*bdx + tid], sdata[full_pass*bdx + tid]);
         }
+}
 
-	}
 
-__global__ void compute_slice_moments_cuda_moments_from_sums(double* moments, const int64_t n_slices, const int64_t weight, const int64_t threshold_num_macroparticles) {
+/*gpukern*/ void compute_slice_moments_gpu_moments_from_sums(
+        /*gpuglmem*/ double* moments, 
+         const int64_t n_slices, 
+         const int64_t weight,
+         const int64_t threshold_num_macroparticles
+){
 
-    unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    
+    unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x; //only_for_context cuda
+    unsigned int gid = get_global_id(0); //only_for_context opencl
+
     if (gid >=n_slices) return;  // in case blocksize > n_threads
 
     // for this n_slices threads are enough
@@ -270,5 +359,5 @@ __global__ void compute_slice_moments_cuda_moments_from_sums(double* moments, co
         }
     }
 }
-#endif /* XFIELDS_COMPUTESLICEMOMENTS_CUH__ */
-#endif /* XFIELDS_COMPUTESLICEMOMENTS_CUDA */
+#endif // GPUSUM
+#endif // CPU
