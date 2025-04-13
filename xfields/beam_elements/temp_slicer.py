@@ -299,7 +299,6 @@ class TempSlicer(xo.HybridClass):
             else:
                 from pyopencl import LocalMemory as cllm
                 opencl_shared_data = cllm(self.num_slices*17*8)  # 17 is for count (1), first (6) and second (10) moments, 8 is for double (8 bytes)
-#                self._context.kernels.compute_slice_moments_gpu_sums_per_slice.set_arg(2, sdata)
                 self._context.kernels.compute_slice_moments_gpu_sums_per_slice(
                                                                particles=particles, 
                                                                particles_slice=particles.slice,
@@ -308,6 +307,7 @@ class TempSlicer(xo.HybridClass):
                                                                num_macroparticles=np.int64(len(particles.slice)),
                                                                n_slices=np.int64(self.num_slices), 
                                                                shared_mem_size_bytes=np.int64(self.num_slices*17*8))
+            print(slice_moments) # prints 0s
             self._context.kernels.compute_slice_moments_gpu_moments_from_sums(moments=slice_moments, n_slices=np.int64(self.num_slices),
                                                            weight=particles.weight.get()[0], threshold_num_macroparticles=np.int64(threshold_num_macroparticles))
             print("i pass here")

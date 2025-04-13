@@ -19,14 +19,14 @@
     #define AtomicAdd atomicAdd
 
 #elif defined(__OPENCL_VERSION__)
-inline void AtomicAddOCLToShared(volatile __local double *source, const float operand) {
+inline void AtomicAddOCLToShared(volatile __local double *source, const double operand) {
     union {
         unsigned int intVal;
-        float floatVal;
+        double floatVal;
     } newVal;
     union {
         unsigned int intVal;
-        float floatVal;
+        double floatVal;
     } prevVal;
     do {
         prevVal.floatVal = *source;
@@ -258,11 +258,12 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
         unsigned int tid = threadIdx.x; //only_for_context guda
         unsigned int bdx = blockDim.x //only_for_context cuda
         unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x; //only_for_context cuda
-
+        
         unsigned int tid = get_local_id(0); //only_for_context opencl
         unsigned int bdx = get_local_size(0); //only_for_context opencl
         unsigned int gid = get_global_id(0); //only_for_context opencl
 
+        //printf("gid: %d\n", gid);
 
         // len n_slices * 17 (6 x sum(xi), 10 x sum(xi*xy), 1 x count)
         extern __shared__ double sdata[];  //only_for_context cuda
@@ -271,7 +272,7 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
         unsigned int full_pass = (int)(17*n_slices / bdx);
         unsigned int residual = (17*n_slices)%bdx;
         for (unsigned int i=0; i<full_pass; i++){
-          sdata[i*bdx + tid] = 0.0;
+          sdata[i*bdx + tid] = 1.0;
         }
 	if (tid < residual){
           sdata[full_pass*bdx+tid] = 0.0;
@@ -292,7 +293,8 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
     
               // count
               AtomicAdd(&sdata[16*n_slices+s_i], 1);
-    
+              printf("gid %d, x: %g, sdata: %g, sdata_s_i: %g\n", gid, x_i, sdata[gid], sdata[s_i]);      
+
               // sum(xi)
               AtomicAdd(&sdata[           s_i],     x_i);
     
@@ -318,6 +320,7 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
 
         __syncthreads(); //only_for_context cuda
         barrier(CLK_LOCAL_MEM_FENCE); //only_for_context opencl
+
 
         // write count and first and second order partial sums from shared to global mem
         for (unsigned int i=0; i<full_pass; i++){
