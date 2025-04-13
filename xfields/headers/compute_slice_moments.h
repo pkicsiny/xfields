@@ -19,7 +19,22 @@
     #define AtomicAdd atomicAdd
 
 #elif defined(__OPENCL_VERSION__)
-inline void AtomicAddOCL(volatile __global double *source, const float operand) {
+inline void AtomicAddOCLToShared(volatile __local double *source, const float operand) {
+    union {
+        unsigned int intVal;
+        float floatVal;
+    } newVal;
+    union {
+        unsigned int intVal;
+        float floatVal;
+    } prevVal;
+    do {
+        prevVal.floatVal = *source;
+        newVal.floatVal = prevVal.floatVal + operand;
+    } while (atomic_cmpxchg((volatile __local unsigned int *)source, prevVal.intVal, newVal.intVal) != prevVal.intVal);
+}
+
+inline void AtomicAddOCLToGlobal(volatile __global double *source, const float operand) {
     union {
         unsigned int intVal;
         float floatVal;
@@ -33,14 +48,14 @@ inline void AtomicAddOCL(volatile __global double *source, const float operand) 
         newVal.floatVal = prevVal.floatVal + operand;
     } while (atomic_cmpxchg((volatile __global unsigned int *)source, prevVal.intVal, newVal.intVal) != prevVal.intVal);
 }
-#define AtomicAdd AtomicAddOCL
+#define AtomicAdd AtomicAddOCLToShared
 #endif
 
 // functons that are not used
 #ifdef XFIELDS_COMPUTESLICEMOMENTS_CPU
 #ifndef XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
 #define XFIELDS_COMPUTESLICEMOMENTS_GPUSUM
-void compute_slice_moments_gpu_sums_per_slice(ParticlesData particles, int64_t* particles_slice, double* sdata, double* moments, const int64_t num_macroparticles, const int64_t n_slices, const int64_t shared_mem_size_bytes){}
+void compute_slice_moments_gpu_sums_per_slice( ParticlesData particles,int64_t* particles_slice, double* sdata, double* moments, const int64_t num_macroparticles, const int64_t n_slices, const int64_t shared_mem_size_bytes){}
 void compute_slice_moments_gpu_moments_from_sums(double* moments, const int64_t n_slices, const int64_t weight, const int64_t threshold_num_macroparticles){}
 #endif
 #endif
@@ -232,12 +247,12 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
 /*gpukern*/ void compute_slice_moments_gpu_sums_per_slice(
         ParticlesData particles,
         /*gpuglmem*/ int64_t* particles_slice, 
+        __local double* sdata, //only_for_context opencl 
         /*gpuglmem*/ double* moments,
-        /*gpuglmem*/ double* sdata, //only_for_context opencl 
          const int64_t num_macroparticles,
          const int64_t n_slices, 
          const int64_t shared_mem_size_bytes
-) {
+){
 
         // each thread loads one element from global to shared mem
         unsigned int tid = threadIdx.x; //only_for_context guda
@@ -306,11 +321,14 @@ void compute_slice_moments(ParticlesData particles, int64_t* particles_slice, do
 
         // write count and first and second order partial sums from shared to global mem
         for (unsigned int i=0; i<full_pass; i++){
-              AtomicAdd(&moments[i*bdx + tid], sdata[i*bdx + tid]);
+              atomicAdd(&moments[i*bdx + tid], sdata[i*bdx + tid]); //only_for_context cuda
+              AtomicAddOCLToGlobal(&moments[i*bdx + tid], sdata[i*bdx + tid]); //only_for_context opencl
         }
         if (tid < residual){
-              AtomicAdd(&moments[full_pass*bdx + tid], sdata[full_pass*bdx + tid]);
+              atomicAdd(&moments[full_pass*bdx + tid], sdata[full_pass*bdx + tid]); //only_for_context cuda
+              AtomicAddOCLToGlobal(&moments[full_pass*bdx + tid], sdata[full_pass*bdx + tid]); //only_for_context opencl
         }
+
 }
 
 
