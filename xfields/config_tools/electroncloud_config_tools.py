@@ -92,17 +92,19 @@ def get_electroncloud_fieldmap_from_h5(
 
 def insert_electronclouds(eclouds, fieldmap=None, line=None):
     assert line is not None
+    insertions = []
+    env = line.env
     for name in eclouds.keys():
         s = eclouds[name]["s"]
         length = 0.
-        line.insert_element(
-            element=ElectronCloud(
+        element=ElectronCloud(
                 length=length,
                 fieldmap=fieldmap,
-                _buffer=fieldmap._buffer),
-            name=name,
-            at_s=s)
+                _buffer=fieldmap._buffer)
+        env.elements[name] = element
+        insertions.append(env.place(name, at=s))
 
+    line.insert(insertions)
 
 def config_electronclouds(line, twiss=None, ecloud_info=None, shift_to_closed_orbit=False,
                           subtract_dipolar_kicks=False, fieldmaps=None):
@@ -171,7 +173,9 @@ def full_electroncloud_setup(line=None, ecloud_info=None, filenames=None, contex
                              zeta_max=None, subtract_dipolar_kicks=True, shift_to_closed_orbit=True,
                              steps_r_matrix=None):
 
-    buffer = context.new_buffer()
+    line.build_tracker(compile=False) # To move all elements to the same buffer
+    buffer = line._buffer
+    line.discard_tracker()
     fieldmaps = {
         ecloud_type: get_electroncloud_fieldmap_from_h5(
             filename=filename,
