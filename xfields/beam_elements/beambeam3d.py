@@ -80,6 +80,13 @@ class BhabhaTable(xo.HybridClass):
       'photon_px': xo.Float64[:],
       'photon_py': xo.Float64[:],
       'photon_energy': xo.Float64[:],
+      'vphoton_energy': xo.Float64[:],
+      'cx': xo.Float64[:],
+      'sv': xo.Float64[:],
+      'scattered_e_px': xo.Float64[:],
+      'scattered_e_py': xo.Float64[:],
+      'scattered_e_energy': xo.Float64[:],
+      'q2': xo.Float64[:],
       'primary_scattering_angle': xo.Float64[:],
       'photon_scattering_angle': xo.Float64[:],
         }

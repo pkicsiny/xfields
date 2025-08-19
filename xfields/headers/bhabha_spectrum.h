@@ -289,7 +289,7 @@ void compt_do(LocalParticle *part, BeamBeamBiGaussian3DRecordData bhabha_record,
     const double pair_ecut = 0.005;   // [GeV] lower cutoff on e_e_prime from guineapig
     double r1, r2;  // [1] uniform random numbers
 
-    if (q2 > MELECTRON_GEV*MELECTRON_GEV) return;  // global upper cut on virtuality; eliminates "constant" part of q2 spectrum i.e. the hadronic virtual photons
+    //if (q2 > MELECTRON_GEV*MELECTRON_GEV) return;  // global upper cut on virtuality; eliminates "constant" part of q2 spectrum i.e. the hadronic virtual photons
     s = 4.0*e_photon*e_primary;  // [GeV^2] approximated center of mass energy of electron-photon Compton scattering
     if (q2 > s) return;          // event specific upper cut on virtuality; check against max allowed virtuality to be absorbed in the event
     if (s < compt_x_min * MELECTRON_GEV*MELECTRON_GEV*4.0) return;  // event specific lower cut on x; check against user defined compt_x_min
@@ -356,6 +356,13 @@ void compt_do(LocalParticle *part, BeamBeamBiGaussian3DRecordData bhabha_record,
                   BhabhaTableData_set_photon_px(     bhabha_table, i_slot, px_photon_prime);
                   BhabhaTableData_set_photon_py(     bhabha_table, i_slot, py_photon_prime);
                   BhabhaTableData_set_photon_energy( bhabha_table, i_slot, e_photon_prime*1e9);
+                  BhabhaTableData_set_vphoton_energy(bhabha_table, i_slot, e_photon*1e9);
+                  BhabhaTableData_set_scattered_e_px(     bhabha_table, i_slot, px_e_prime);
+                  BhabhaTableData_set_scattered_e_py(     bhabha_table, i_slot, py_e_prime);
+                  BhabhaTableData_set_scattered_e_energy( bhabha_table, i_slot, e_e_prime*1e9);
+                  BhabhaTableData_set_q2(                 bhabha_table, i_slot, q2);
+                  BhabhaTableData_set_sv(                 bhabha_table, i_slot, s);
+                  BhabhaTableData_set_cx(                 bhabha_table, i_slot, compt_x_min);
                   BhabhaTableData_set_primary_scattering_angle(bhabha_table, i_slot, theta_e);
                   BhabhaTableData_set_photon_scattering_angle( bhabha_table, i_slot, theta_g);
               }
