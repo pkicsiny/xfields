@@ -40,6 +40,9 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
     double const min_sigma_diff = BeamBeamBiGaussian2DData_get_min_sigma_diff(el);
 
+    int const use_gl = BeamBeamBiGaussian2DData_get_use_gl(el);
+
+
     START_PER_PARTICLE_BLOCK(part0, part);
         double const x = LocalParticle_get_x(part);
         double const y = LocalParticle_get_y(part);
@@ -79,10 +82,33 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
         // Get transverse fields
         double Ex, Ey; // Ex = -dphi/dx, Ey = -dphi/dy
-        get_Ex_Ey_gauss(x_hat, y_hat,
+
+        if (use_gl==0){
+
+
+
+
+            get_Ex_Ey_gauss(x_hat, y_hat,
             sqrt(Sig_11_hat), sqrt(Sig_33_hat),
             min_sigma_diff,
             &Ex, &Ey);
+
+            //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
+            //fprintf(fptr3, "BE=%d, Ex=%g", use_gl, Ex);
+            //fclose(fptr3);
+        }else{
+
+
+
+
+            get_Ex_Ey_gauss_gl(x_hat, y_hat,
+            sqrt(Sig_11_hat), sqrt(Sig_33_hat),
+            &Ex, &Ey);
+
+            //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
+            //fprintf(fptr3, "GL=%d, Ex=%g", use_gl, Ex);
+            //fclose(fptr3);
+        }
 
         const double charge_mass_ratio = part_chi*QELEM*part_q0
                     /(part_mass0*QELEM/(C_LIGHT*C_LIGHT));
@@ -97,6 +123,11 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
         double const dpx = dpx_hat*costheta - dpy_hat*sintheta;
         double const dpy = dpx_hat*sintheta + dpy_hat*costheta;
+
+
+//        FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
+//        fprintf(fptr3, ", part_chi=%g, QELEM=%g, part_q0=%g, part_mass0=%g, C_LIGHT=%g, charge_mass_ratio=%g, other_beam_num_particles=%g, other_beam_q0=%g, part_gamma0=%g, part_beta0=%g, other_beam_beta0=%g, factor=%g, dpx=%g\n", part_chi, QELEM, part_q0, part_mass0, C_LIGHT, charge_mass_ratio, other_beam_num_particles, other_beam_q0, part_gamma0, part_beta0, other_beam_beta0, factor, dpx);
+//        fclose(fptr3);
 
         LocalParticle_add_to_px(part, dpx - post_subtract_px);
         LocalParticle_add_to_py(part, dpy - post_subtract_py);

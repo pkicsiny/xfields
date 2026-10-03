@@ -35,11 +35,12 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         'other_beam_Sigma_33': xo.Float64,
 
         'min_sigma_diff': xo.Float64,
+        'use_gl': xo.Int32,
 
     }
 
     _extra_c_sources= [
-        '#include "xfields/beam_elements/beambeam_src/beambeam2d.h"',
+       '#include "xfields/beam_elements/beambeam_src/beambeam2d.h"',
     ]
 
     def __init__(self,
@@ -64,6 +65,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
                     post_subtract_py=0,
 
                     min_sigma_diff=1e-10,
+                    use_gl=None,
 
                     config_for_update=None,
 
@@ -154,6 +156,9 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         self.post_subtract_py = post_subtract_py
 
         self.min_sigma_diff = min_sigma_diff
+
+        assert use_gl is not None, "use_gl has to be set!"
+        self.use_gl = use_gl
 
         self.scale_strength = scale_strength
 
