@@ -42,6 +42,15 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
     int const use_gl = BeamBeamBiGaussian2DData_get_use_gl(el);
 
+    // compute GL sigma dependent stuff before per particle block
+//    if (use_gl==1){
+
+//    double pref;
+//    gl_prepare(sqrt(other_beam_Sigma_11), sqrt(other_beam_Sigma_33),
+//                &A, &B, &Wx, &Wy, &pref)
+
+//    }
+
 
     START_PER_PARTICLE_BLOCK(part0, part);
         double const x = LocalParticle_get_x(part);
@@ -101,7 +110,7 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
 
 
-            get_Ex_Ey_gauss_gl(x_hat, y_hat,
+            get_Ex_Ey_gauss_gl_naive(x_hat, y_hat,
             sqrt(Sig_11_hat), sqrt(Sig_33_hat),
             &Ex, &Ey);
 

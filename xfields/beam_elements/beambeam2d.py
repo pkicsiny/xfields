@@ -35,8 +35,16 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         'other_beam_Sigma_33': xo.Float64,
 
         'min_sigma_diff': xo.Float64,
-        'use_gl': xo.Int32,
 
+        'use_gl':       xo.Int32,
+        'U2':           xo.Float64[:],
+        'ONE_MINUS_U2': xo.Float64[:],
+        'HALF_U2':      xo.Float64[:],
+        'U_W':          xo.Float64[:], 
+        'gl_A':         xo.Float64[:],
+        'gl_B':         xo.Float64[:],
+        'gl_Wx':        xo.Float64[:],
+        'gl_Wy':        xo.Float64[:],
     }
 
     _extra_c_sources= [
@@ -65,7 +73,18 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
                     post_subtract_py=0,
 
                     min_sigma_diff=1e-10,
-                    use_gl=None,
+                    use_gl=0,
+
+                    num_gl_points=128,
+                    tanh_cc=20,
+                    U2=None, 
+                    ONE_MINUS_U2=None,
+                    HALF_U2=None,
+                    U_W=None,
+                    gl_A=None,   
+                    gl_B=None,  
+                    gl_Wx=None,  
+                    gl_Wy=None, 
 
                     config_for_update=None,
 
@@ -111,7 +130,13 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
 
         params = self._handle_init_old_interface(kwargs)
 
-        self.xoinitialize(**kwargs)
+        self._allocate_xobject(num_gl_points, **kwargs)
+
+        self.use_gl = use_gl
+        self.init_gl_tables(num_gl_points, tanh_cc)
+#        print(np.shape(self.gl_B), np.shape(self.gl_Wx), np.shape(self.gl_Wy), np.shape(self.U2), np.shape(self.U_W), np.shape(self.HALF_U2), np.shape(self.ONE_MINUS_U2))
+
+        #self.xoinitialize(**kwargs)
 
         if self.iscollective:
             if not isinstance(self._buffer.context, xo.ContextCpu):
@@ -157,9 +182,6 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
 
         self.min_sigma_diff = min_sigma_diff
 
-        assert use_gl is not None, "use_gl has to be set!"
-        self.use_gl = use_gl
-
         self.scale_strength = scale_strength
 
     def _handle_init_old_interface(self, kwargs):
@@ -204,7 +226,67 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
 
         return params
 
+    def _allocate_xobject(self, num_gl_points, **kwargs):
+        self.xoinitialize(
+            U2=num_gl_points,
+            ONE_MINUS_U2=num_gl_points,
+            HALF_U2=num_gl_points,
+            U_W=num_gl_points,
+            gl_A=num_gl_points,
+            gl_B=num_gl_points,
+            gl_Wx=num_gl_points,
+            gl_Wy=num_gl_points,
+            **kwargs
+            )
+
+
+    def get_gl_tanh(self, N=128, c=20):
+        t_nodes, t_weights = np.polynomial.legendre.leggauss(N)
+        v_nodes = 0.5 * (t_nodes + 1.0)
+        v_weights = 0.5 * t_weights
+        if c == 0:
+            return v_nodes, v_weights
+        tanh_half_c = np.tanh(0.5 * c)
+        u_nodes = 0.5 * (1.0 + np.tanh(c * (v_nodes - 0.5)) / tanh_half_c)
+        phi_prime = (
+            (0.5 * c / tanh_half_c) * (1.0 / np.cosh(c * (v_nodes - 0.5))) ** 2
+        )
+        u_weights = v_weights * phi_prime
+        return u_nodes, u_weights
+
+    def init_gl_tables(self, num_points, cc):
+        if self.use_gl:
+            u_nodes, u_weights = self.get_gl_tanh(num_points, c=cc)
+            self.U2           = u_nodes * u_nodes
+            self.ONE_MINUS_U2 = 1.0 - self.U2
+            self.HALF_U2      = 0.5 * self.U2
+            self.U_W          = u_nodes * u_weights
+            self.refresh_gl_tables()
+        else:
+            self.U2          
+            self.ONE_MINUS_U2[:] = 0
+            self.HALF_U2     [:] = 0    
+            self.U_W         [:] = 0         
+            self.gl_A        [:] = 0
+            self.gl_B        [:] = 0
+            self.gl_Wx       [:] = 0
+            self.gl_Wy       [:] = 0
+
+    def refresh_gl_tables(self):
+        sx2 = self.other_beam_Sigma_11
+        sy2 = self.other_beam_Sigma_33
+        inv_sx2 = 1.0 / sx2
+        r = sy2 * inv_sx2
+        inv_d = 1.0 / (self.ONE_MINUS_U2 + self.U2 * r)   # numpy copies of your GL tables
+        A = self.HALF_U2 * inv_sx2
+        self.gl_A  = A
+        self.gl_B  = A * inv_d
+        self.gl_Wx = self.U_W * np.sqrt(inv_d)
+        self.gl_Wy = self.gl_Wx * inv_d
+
+
     def _track_collective(self, particles, _force_suspend=False):
+        print("here")
         if self.config_for_update._working_on_bunch is None:
             # I am working on a new bunch
 
