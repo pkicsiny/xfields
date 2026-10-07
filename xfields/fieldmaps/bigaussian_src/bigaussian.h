@@ -225,56 +225,6 @@ void gl_tables_init(void)
     }
 }
 
-/*
-GPUFUN
-void gl_prepare(
-    const double sigma_x, 
-    const double sigma_y,
-    double* A, double* B, double* Wx, double* Wy, double* pref,
-){
-
-    // at first call compute gl nodes and weights
-    if (GL_SWITCH){
-        gl_tables_init();
-        GL_SWITCH = 0;
-    }
-
-
-    const double inv_sx2 = 1.0/(sigma_x*sigma_x);
-    (*pref) = TWO_PI_EPS0_INV * inv_sx2;
-    const double r = sigma_y*sigma_y*inv_sx2;
-
-    for (int k = 0; k < GL_N; k++) {
-        const double inv_d = 1.0/(ONE_MINUS_U2[k] + U2[k]*r);
-        A[k]  = HALF_U2[k]*inv_sx2;
-        B[k]  = A[k]*inv_d;
-        Wx[k] = U_W[k]*sqrt(inv_d);
-        Wy[k] = Wx[k]*inv_d;
-    }
-}
-
-GPUFUN
-void get_Ex_Ey_gauss_gl(
-             const double  x,
-             const double  y,
-             const double  sigma_x,
-             const double* A, const double* B, const double* Wx, const double* Wy, const double pref,
-             double* Ex,
-             double* Ey){
-
-    const double x2 = x*x, y2 = y*y;
-    double ix_sum = 0.0, iy_sum = 0.0;
-
-    for (int k = 0; k < GL_N; k++) {
-        const double e = exp(-(x2*A[k] + y2*B[k]));
-        ix_sum += Wx[k]*e;
-        iy_sum += Wy[k]*e;
-    }
-
-    (*Ex) = pref * x * ix_sum;
-    (*Ey) = pref * y * iy_sum;
-}
-*/
 
 GPUFUN
 void get_Ex_Ey_gauss_gl_naive(
@@ -285,9 +235,9 @@ void get_Ex_Ey_gauss_gl_naive(
              double* Ex,
              double* Ey){
 
-//    FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
-//    fprintf(fptr3, "GL_SWITCH: %d\n", GL_SWITCH);
-//    fclose(fptr3);
+    //FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
+    //fprintf(fptr3, "GL_SWITCH: %d\n", GL_SWITCH);
+    //fclose(fptr3);
 
 
 
@@ -317,6 +267,29 @@ void get_Ex_Ey_gauss_gl_naive(
     }
 
     const double pref = TWO_PI_EPS0_INV * inv_sx2;
+
+    (*Ex) = pref * x * ix_sum;
+    (*Ey) = pref * y * iy_sum;
+}
+
+
+GPUFUN
+void get_Ex_Ey_gauss_gl(
+             const double  x,
+             const double  y,
+             const double  sigma_x,
+             const double* A, const double* B, const double* Wx, const double* Wy, const double pref, const int n,
+             double* Ex,
+             double* Ey){
+
+    const double x2 = x*x, y2 = y*y;
+    double ix_sum = 0.0, iy_sum = 0.0;
+
+    for (int k = 0; k < n; k++) {
+        const double e = exp(-(x2*A[k] + y2*B[k]));
+        ix_sum += Wx[k]*e;
+        iy_sum += Wy[k]*e;
+    }
 
     (*Ex) = pref * x * ix_sum;
     (*Ey) = pref * y * iy_sum;

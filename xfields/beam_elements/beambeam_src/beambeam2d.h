@@ -42,14 +42,18 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
     int const use_gl = BeamBeamBiGaussian2DData_get_use_gl(el);
 
+    //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
+    //fprintf(fptr3, "GL=%d\n", use_gl);
+    //fclose(fptr3);
+
+
     // compute GL sigma dependent stuff before per particle block
-//    if (use_gl==1){
-
-//    double pref;
-//    gl_prepare(sqrt(other_beam_Sigma_11), sqrt(other_beam_Sigma_33),
-//                &A, &B, &Wx, &Wy, &pref)
-
-//    }
+    GPUGLMEM double const* gl_A  = BeamBeamBiGaussian2DData_getp1_gl_A(el, 0);
+    GPUGLMEM double const* gl_B  = BeamBeamBiGaussian2DData_getp1_gl_B(el, 0);
+    GPUGLMEM double const* gl_Wx = BeamBeamBiGaussian2DData_getp1_gl_Wx(el, 0);
+    GPUGLMEM double const* gl_Wy = BeamBeamBiGaussian2DData_getp1_gl_Wy(el, 0);
+    double const pref   = BeamBeamBiGaussian2DData_get_pref(el);
+    int const num_gl_points = BeamBeamBiGaussian2DData_get_num_gl_points(el);
 
 
     START_PER_PARTICLE_BLOCK(part0, part);
@@ -92,30 +96,30 @@ void BeamBeamBiGaussian2D_track_local_particle(
         // Get transverse fields
         double Ex, Ey; // Ex = -dphi/dx, Ey = -dphi/dy
 
-        if (use_gl==0){
-
-
-
-
-            get_Ex_Ey_gauss(x_hat, y_hat,
-            sqrt(Sig_11_hat), sqrt(Sig_33_hat),
-            min_sigma_diff,
-            &Ex, &Ey);
-
-            //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
-            //fprintf(fptr3, "BE=%d, Ex=%g", use_gl, Ex);
-            //fclose(fptr3);
-        }else{
-
-
-
-
-            get_Ex_Ey_gauss_gl_naive(x_hat, y_hat,
-            sqrt(Sig_11_hat), sqrt(Sig_33_hat),
+        if (use_gl==1){
+            get_Ex_Ey_gauss_gl(x_hat, y_hat,
+            sqrt(Sig_11_hat), gl_A, gl_B, gl_Wx, gl_Wy, pref, num_gl_points,
             &Ex, &Ey);
 
             //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
             //fprintf(fptr3, "GL=%d, Ex=%g", use_gl, Ex);
+            //fclose(fptr3);
+        }else if (use_gl==2){
+            get_Ex_Ey_gauss_gl_naive(x_hat, y_hat,
+            sqrt(Sig_11_hat), sqrt(Sig_33_hat),
+            &Ex, &Ey);                          
+
+            //FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
+            //fprintf(fptr3, "BE=%d, Ex=%g\n", use_gl, Ex);
+            //fclose(fptr3);
+        }else{
+            get_Ex_Ey_gauss(x_hat, y_hat,
+            sqrt(Sig_11_hat), sqrt(Sig_33_hat),
+            min_sigma_diff,
+            &Ex, &Ey);
+                                                                                                        
+            //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
+            //fprintf(fptr3, "BE=%d, Ex=%g", use_gl, Ex);
             //fclose(fptr3);
         }
 
