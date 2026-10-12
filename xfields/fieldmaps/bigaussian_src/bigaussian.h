@@ -182,7 +182,7 @@ static void gauss_legendre(int n, double *x, double *w)
     }
 }
 
-#define GL_N  128
+#define GL_N  256
 #define GL_C  20.0
 int GL_SWITCH=1;
 
@@ -293,6 +293,86 @@ void get_Ex_Ey_gauss_gl(
 
     (*Ex) = pref * x * ix_sum;
     (*Ey) = pref * y * iy_sum;
+}
+
+GPUFUN
+void get_Ex_Ey_gauss_gl_ad(
+             const double  x,
+             const double  y,
+             const double  sigma_x, const double sigma_y,
+             const double* A, const double* B, const double* Wx, const double* Wy, const double pref, const int n, const int ad,
+             double* Ex,
+             double* Ey,
+             double* dExdx,  double* dExdy,
+             double* dEydx,  double* dEydy,
+             double* dExdsx, double* dExdsy,
+             double* dEydsx, double* dEydsy
+){
+
+    const double x2 = x*x, y2 = y*y;
+    double ix_sum = 0.0, iy_sum = 0.0;
+
+    const double sx2 = sigma_x*sigma_x; // ad
+    double M0 = 0.0, M1 = 0.0, M2 = 0.0, M4 = 0.0, M5 = 0.0;  // ad
+
+    for (int k = 0; k < n; k++) {
+        const double exp_factor = exp(-(x2*A[k] + y2*B[k]));
+        const double wfx = Wx[k] * exp_factor;
+        ix_sum += wfx;
+        iy_sum += Wy[k]*exp_factor;
+        if (ad == 1) {
+            const double U2k   = 2.0*A[k] * sx2;   // u_k^2
+            const double inv_d = B[k] / A[k];      // 1/D(u_k)
+            const double v     = U2k * inv_d;      // U2/D
+
+            const double t0 = wfx * U2k;           // w U2
+            const double t1 = t0 * inv_d;          // w U2/D
+            const double t2 = t1 * inv_d;          // w U2/D^2
+
+            M0 += t0;                            // sum w U2
+            M1 += t1;                            // sum w U2/D
+            M2 += t2;                            // sum w U2/D^2
+            M4 += t1*v;                          // sum w U2^2/D^2
+            M5 += t2*v;                          // sum w U2^2/D^3
+        }
+
+
+    }
+
+    const double prefactor_x = pref * x;
+    const double prefactor_y = pref * y;
+
+    (*Ex) = prefactor_x * ix_sum;
+    (*Ey) = prefactor_y * iy_sum;
+
+    if (ad == 1) {
+        const double sy2 = sigma_y*sigma_y;
+        const double a   = 1.0/sx2;              // inv_sx2
+        const double a2  = a*a;
+
+        const double I_dExdx  = M0;
+        const double I_dExdy  = M1;
+        const double I_dEydy  = M2;
+        const double I_dExdsx = a*((sy2 + y2)*M1 + x2*M0) - sy2*y2*a2*M4;
+        const double I_dExdsy = y2*a2*M4 - a*M1;
+        const double I_dEydsx = a*((3.0*sy2 + y2)*M2 + x2*M1) - sy2*y2*a2*M5;
+        const double I_dEydsy = y2*a2*M5 - 3.0*a*M2;
+
+        const double inv_sx = 1.0/sigma_x;
+        const double minus_2_inv_sx = -2.0*inv_sx;
+        const double prefactor_x_inv_sx2 = prefactor_x*a;
+
+        (*dExdx)  = pref*ix_sum - prefactor_x_inv_sx2*x*I_dExdx;
+        (*dExdy)  =             - prefactor_x_inv_sx2*y*I_dExdy;
+        (*dEydx)  = (*dExdy);
+        (*dEydy)  = pref*iy_sum - pref*y2*a*I_dEydy;
+        (*dExdsx) = (*Ex)*minus_2_inv_sx + prefactor_x*inv_sx*I_dExdsx;
+        (*dExdsy) = prefactor_x*sigma_y*I_dExdsy;
+        (*dEydsx) = (*Ey)*minus_2_inv_sx + prefactor_y*inv_sx*I_dEydsx;
+        (*dEydsy) = prefactor_y*sigma_y*I_dEydsy;
+    }
+
+
 }
 
 

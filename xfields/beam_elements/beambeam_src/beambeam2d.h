@@ -54,7 +54,7 @@ void BeamBeamBiGaussian2D_track_local_particle(
     GPUGLMEM double const* gl_Wy = BeamBeamBiGaussian2DData_getp1_gl_Wy(el, 0);
     double const pref   = BeamBeamBiGaussian2DData_get_pref(el);
     int const num_gl_points = BeamBeamBiGaussian2DData_get_num_gl_points(el);
-
+    int const ad = BeamBeamBiGaussian2DData_get_ad(el);
 
     START_PER_PARTICLE_BLOCK(part0, part);
         double const x = LocalParticle_get_x(part);
@@ -95,6 +95,8 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
         // Get transverse fields
         double Ex, Ey; // Ex = -dphi/dx, Ey = -dphi/dy
+        double dExdx, dExdy, dEydx, dEydy, dExdsx, dExdsy, dEydsx, dEydsy; // ad
+
 
         if (use_gl==1){
             get_Ex_Ey_gauss_gl(x_hat, y_hat,
@@ -112,6 +114,16 @@ void BeamBeamBiGaussian2D_track_local_particle(
             //FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
             //fprintf(fptr3, "BE=%d, Ex=%g\n", use_gl, Ex);
             //fclose(fptr3);
+        }else if (use_gl==3){
+            get_Ex_Ey_gauss_gl_ad(x_hat, y_hat,
+            sqrt(Sig_11_hat), sqrt(Sig_33_hat), gl_A, gl_B, gl_Wx, gl_Wy, pref, num_gl_points, ad,
+            &Ex, &Ey,
+            &dExdx, &dExdy, &dEydx, &dEydy,
+            &dExdsx, &dExdsy, &dEydsx, &dEydsy);
+
+
+
+
         }else{
             get_Ex_Ey_gauss(x_hat, y_hat,
             sqrt(Sig_11_hat), sqrt(Sig_33_hat),
@@ -130,6 +142,11 @@ void BeamBeamBiGaussian2D_track_local_particle(
                     / (part_gamma0*part_beta0*C_LIGHT*C_LIGHT)
                     * (1+other_beam_beta0 * part_beta0)
                     / (other_beam_beta0 + part_beta0));
+
+
+//        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/ad_derivatives.txt", "a");
+//        fprintf(fptr3, "%g %g %g %g %g %g %g %g %g\n", factor, dExdx, dExdy, dEydx, dEydy, dExdsx, dExdsy, dEydsx, dEydsy);
+  //      fclose(fptr3);
 
         double const dpx_hat = factor * Ex;
         double const dpy_hat = factor * Ey;

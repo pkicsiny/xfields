@@ -47,6 +47,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         'gl_Wx':         xo.Float64[:],
         'gl_Wy':         xo.Float64[:],
         'pref':          xo.Float64,
+         'ad':           xo.Int32,
     }
 
     _extra_c_sources= [
@@ -79,6 +80,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
                     use_gl=0,
                     num_gl_points=128,
                     tanh_cc=20,
+                    ad=0,
 
                     config_for_update=None,
 
@@ -178,6 +180,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         self.use_gl = use_gl
         self.init_gl_tables(num_gl_points, tanh_cc)
         self.num_gl_points = num_gl_points
+        self.ad = ad
 
     def _handle_init_old_interface(self, kwargs):
 
@@ -250,7 +253,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         return u_nodes, u_weights
 
     def init_gl_tables(self, num_points, cc):
-        if self.use_gl==1:
+        if self.use_gl==1 or self.use_gl==3:
             u_nodes, u_weights = self.get_gl_tanh(num_points, c=cc)
             self.U2           = self._arr2ctx(u_nodes * u_nodes)
             self.ONE_MINUS_U2 = self._arr2ctx(1.0 - self.U2)
