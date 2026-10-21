@@ -158,6 +158,14 @@ void get_Ex_Ey_gauss(
 }
 
 
+/*
+autodiff kernels
+*/
+
+#define GL_N  256
+#define GL_C  20.0
+int GL_SWITCH=1;
+
 /* Gauss-Legendre nodes/weights on [-1, 1], n points (equivalent to np.polynomial.legendre.leggauss). */
 static void gauss_legendre(int n, double *x, double *w)
 {
@@ -182,17 +190,14 @@ static void gauss_legendre(int n, double *x, double *w)
     }
 }
 
-#define GL_N  256
-#define GL_C  20.0
-int GL_SWITCH=1;
-
-/* Global tables, same names as your Python constants */
+// global tables
 static double U2[GL_N];
 static double ONE_MINUS_U2[GL_N];
 static double HALF_U2[GL_N];
 static double U_W[GL_N];
+//static double U4[GL_N];
 
-/* Call once at startup, before any threads are launched. */
+// call once at startup to populate global tables
 void gl_tables_init(void)
 {
 
@@ -222,6 +227,7 @@ void gl_tables_init(void)
         ONE_MINUS_U2[i] = 1.0 - u2;
         HALF_U2[i]      = 0.5 * u2;
         U_W[i]          = u * uw;
+        //U4[i]           = u2 * u2;
     }
 }
 
@@ -234,12 +240,6 @@ void get_Ex_Ey_gauss_gl_naive(
              const double  sigma_y,
              double* Ex,
              double* Ey){
-
-    //FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
-    //fprintf(fptr3, "GL_SWITCH: %d\n", GL_SWITCH);
-    //fclose(fptr3);
-
-
 
     // at first call compute gl nodes and weights
     if (GL_SWITCH){
@@ -259,10 +259,6 @@ void get_Ex_Ey_gauss_gl_naive(
         const double ix    = U_W[k] * sqrt(inv_d);
         ix_sum += ix * e;
         iy_sum += ix * inv_d * e;
-
-//        FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
-//        fprintf(fptr3, "%d, %g\n", GL_SWITCH, U_W[k]);
-//        fclose(fptr3);
 
     }
 
