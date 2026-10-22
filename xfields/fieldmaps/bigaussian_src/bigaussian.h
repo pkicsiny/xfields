@@ -406,9 +406,9 @@ void get_Ex_Ey_gauss_gl_6d(
         const double wxy_e = Wxy[k] * exp_factor;
 
 
-        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_hh.txt", "a");
-        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", k, x, y, sigma_x, XX[k], YY[k], XY[k], Wxx[k], Wyy[k], Wxy[k]);
-        fclose(fptr3);                                                                            
+        //FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_hh.txt", "a");
+        //fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", k, x, y, sigma_x, XX[k], YY[k], XY[k], Wxx[k], Wyy[k], Wxy[k]);
+        //fclose(fptr3);                                                                            
 
 
         // for E

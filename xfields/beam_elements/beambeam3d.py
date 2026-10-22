@@ -591,7 +591,8 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
             self.gl_Wxy      [:] = 0
             self.pref            = 0
             self.pref_kappa      = 0
-                                                                                           
+                              
+    # this is not needed for WS, maybe for SS                                                             
     def refresh_gl_tables(self):
         # assumes sigmas in boosted frame, size n_slices
         sx2 = self.slices_other_beam_Sigma_11_star # this has to be at CP

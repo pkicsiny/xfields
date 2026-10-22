@@ -289,13 +289,6 @@ void synchrobeam_kick(
               sqrt(Sig_11_hat_star), sqrt(Sig_33_hat_star),
                           min_sigma_diff, Ex, Ey, &Gx, &Gy);
 
-
-        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_be.txt", "a");
-        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gx, Gy, x_bar_hat_star, y_bar_hat_star, Sig_11_hat_star, Sig_33_hat_star);
-        fclose(fptr3);
-
-
-    
         // Compute kicks [1]
         double Fx_hat_star = Ksl*Ex;
         double Fy_hat_star = Ksl*Ey;
@@ -305,10 +298,16 @@ void synchrobeam_kick(
         // Move kicks to coupled reference frame
         Fx_star = Fx_hat_star*costheta - Fy_hat_star*sintheta;
         Fy_star = Fx_hat_star*sintheta + Fy_hat_star*costheta;
-    
+
         // Compute longitudinal kick [1]
         Fz_star = 0.5*(Fx_hat_star*dS_x_bar_hat_star  + Fy_hat_star*dS_y_bar_hat_star+
                        Gx_hat_star*dS_Sig_11_hat_star + Gy_hat_star*dS_Sig_33_hat_star);
+
+
+//        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_be.txt", "a");
+//        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gx, Gy, x_bar_hat_star, y_bar_hat_star, Sig_11_0, Sig_33_0, Sig_11_hat_star, Sig_33_hat_star, Fx_star, Fy_star, Gx_hat_star, Gy_hat_star, Fz_star);
+//        fclose(fptr3);
+    
 
     // use GL autodiff
     }else{
@@ -342,10 +341,6 @@ void synchrobeam_kick(
         gl_Wxx, gl_Wyy, gl_Wxy, 
         gl_pref, gl_pref_xy, num_gl_points,
         &Ex, &Ey, &Gxx, &Gyy, &Gxy);
-   
-        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
-        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gxx, Gyy, Gxy, x_bar_star, y_bar_star, Sig_11, Sig_33);
-        fclose(fptr3);                                                                            
 
         // Compute kicks [1]
         Fx_star  = Ksl*Ex;
@@ -356,8 +351,8 @@ void synchrobeam_kick(
 
         // Compute longitudinal kick [1]
 
-        double dS_x_bar_star = *px_star - px_slice_star;
-        double dS_y_bar_star = *py_star - py_slice_star;
+        double dS_x_bar_star = 0;//*px_star - px_slice_star;
+        double dS_y_bar_star = 0;//*py_star - py_slice_star;
         double dS_Sig_11_star = 2.*Sig_12_0 + 2.*Sig_22_0*S;
         double dS_Sig_33_star = 2.*Sig_34_0 + 2.*Sig_44_0*S; 
         double dS_Sig_13_star = (Sig_14_0+Sig_23_0) + 2.*Sig_24_0*S;
@@ -365,6 +360,10 @@ void synchrobeam_kick(
         Fz_star = 0.5*(Fx_star*dS_x_bar_star  + Fy_star*dS_y_bar_star+
                        Gxx_star*dS_Sig_11_star + Gyy_star*dS_Sig_33_star + Gxy_star*dS_Sig_13_star);
 
+
+//        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
+//        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gxx, Gyy, Gxy, x_bar_star, y_bar_star, Sig_11_0, Sig_33_0, Sig_11, Sig_33, Fx_star, Fy_star, Gxx_star, Gyy_star, Gxy_star, Fz_star);
+//        fclose(fptr3);                                                                            
 
         x_bar_hat_star = x_bar_star;
         y_bar_hat_star = y_bar_star;
