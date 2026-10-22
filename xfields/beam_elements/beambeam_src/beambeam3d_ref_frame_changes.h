@@ -7,7 +7,7 @@
 #define XFIELDS_BEAMBEAM3D_REF_FRAME_CHANGES_H
 
 #include "xobjects/headers/common.h"
-
+#include "xfields/headers/constants.h" // for 1/2pieps0
 
 GPUFUN
 void boost_coordinates(
@@ -201,6 +201,43 @@ void change_back_ref_frame_and_subtract_dipolar_coordinates(
     *zeta =  *zeta  + shift_zeta  - post_subtract_zeta;
     *pzeta = *pzeta + shift_pzeta - post_subtract_pzeta;
 
+}
+
+
+void refresh_gl_tables(
+    int num_gl_points,
+    double sx2, double sy2, double cov_xy,
+    const double* ONE_MINUS_U2, const double* U2, const double* U4, 
+    const double* HALF_U2, const double* U_W,
+    double* gl_XX, double* gl_YY, double* gl_XY,
+    double* gl_Wxx, double* gl_Wyy, double* gl_Wxy,
+    double* pref, double* pref_xy) 
+{
+
+    // Calculate scalar constants
+    double inv_sx2 = 1.0 / sx2;
+    double r = sy2 * inv_sx2;
+    double kappa = cov_xy * inv_sx2;
+
+    *pref = TWO_PI_EPS0_INV * inv_sx2;
+    *pref_xy = (*pref) * kappa;
+
+    // Evaluate over the 1D GL nodes
+    for (int j = 0; j < num_gl_points; ++j) {
+        double d_tilde = ONE_MINUS_U2[j] + U2[j] * r;
+        double inv_g = 1.0 / (d_tilde - (kappa * kappa) * U4[j]);
+        double inv_g3 = sqrt(inv_g) * inv_g;
+
+        double YY = HALF_U2[j] * inv_sx2 * inv_g;
+        
+        gl_XX[j] = YY * d_tilde;
+        gl_YY[j] = YY;
+        gl_XY[j] = YY * 2.0 * kappa * U2[j];
+        
+        gl_Wyy[j] = U_W[j] * inv_g3;
+        gl_Wxx[j] = gl_Wyy[j] * d_tilde;
+        gl_Wxy[j] = gl_Wyy[j] * U2[j];
+    }
 }
 
 #endif

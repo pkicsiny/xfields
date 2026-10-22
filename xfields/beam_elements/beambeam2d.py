@@ -261,7 +261,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
             self.U_W          = self._arr2ctx(u_nodes * u_weights)
             self.refresh_gl_tables()
         else:
-            self.U2          
+            self.U2          [:] = 0
             self.ONE_MINUS_U2[:] = 0
             self.HALF_U2     [:] = 0    
             self.U_W         [:] = 0         
@@ -276,7 +276,7 @@ class BeamBeamBiGaussian2D(xt.BeamElement):
         sy2 = self.other_beam_Sigma_33
         inv_sx2 = 1.0 / sx2
         r = sy2 * inv_sx2
-        inv_d = 1.0 / (self.ONE_MINUS_U2 + self.U2 * r)   # numpy copies of your GL tables
+        inv_d = 1.0 / (self.ONE_MINUS_U2 + self.U2 * r)
         A = self.HALF_U2 * inv_sx2
         self.gl_A  = self._arr2ctx(A)
         self.gl_B  = self._arr2ctx(A * inv_d)

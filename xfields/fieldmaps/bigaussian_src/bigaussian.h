@@ -372,4 +372,65 @@ void get_Ex_Ey_gauss_gl_ad(
 }
 
 
+GPUFUN
+void get_Ex_Ey_gauss_gl_6d(
+             const double  x,
+             const double  y,
+             const double  sigma_x,
+             const double* XX, const double* YY, const double* XY,
+             const double* Wxx, const double* Wyy, const double* Wxy, 
+             const double pref, const double pref_xy, const int n,
+             double* Ex,
+             double* Ey, 
+             double* Gxx, 
+             double* Gyy, 
+             double* Gxy 
+){
+
+    const double x2 = x*x, y2 = y*y, xy = x*y;
+    double ixx_sum = 0.0, iyy_sum = 0.0, ixy_sum = 0.0;
+
+    double ixx_dpx_sum = 0.0;
+    double ixy_dpx_sum = 0.0;
+    double iyy_dpy_sum = 0.0;
+    double ixy_dpy_sum = 0.0;
+    double ixx_dpy_sum = 0.0;
+
+    for (int k = 0; k < n; k++) {
+        const double exp_factor = exp(-(x2*XX[k] + y2*YY[k] - xy*XY[k]));
+        const double dedx = 2.0 * XX[k] * x - XY[k] * y;
+        const double dedy = 2.0 * YY[k] * y - XY[k] * x;
+
+        const double wxx_e = Wxx[k] * exp_factor;
+        const double wyy_e = Wyy[k] * exp_factor;
+        const double wxy_e = Wxy[k] * exp_factor;
+
+
+        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_hh.txt", "a");
+        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", k, x, y, sigma_x, XX[k], YY[k], XY[k], Wxx[k], Wyy[k], Wxy[k]);
+        fclose(fptr3);                                                                            
+
+
+        // for E
+        ixx_sum += wxx_e;
+        iyy_sum += wyy_e;
+        ixy_sum += wxy_e;
+
+        // for G
+        ixx_dpx_sum += wxx_e * dedx;
+        ixy_dpx_sum += wxy_e * dedx;
+        iyy_dpy_sum += wyy_e * dedy;
+        ixy_dpy_sum += wxy_e * dedy;
+        ixx_dpy_sum += wxx_e * dedy;
+    }
+
+    (*Ex) = pref * x * ixx_sum - pref_xy * y * ixy_sum;
+    (*Ey) = pref * y * iyy_sum - pref_xy * x * ixy_sum;
+
+    (*Gxx) = .5*(    pref * ixx_sum - pref * x * ixx_dpx_sum + pref_xy * y * ixy_dpx_sum);
+    (*Gyy) = .5*(    pref * iyy_sum - pref * y * iyy_dpy_sum + pref_xy * x * ixy_dpy_sum);
+    (*Gxy) =     -pref_xy * ixy_sum - pref * x * ixx_dpy_sum + pref_xy * y * ixy_dpy_sum;
+}
+
+
 #endif // XFIELDS_BIGAUSSIAN_H

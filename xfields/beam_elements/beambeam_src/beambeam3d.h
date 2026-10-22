@@ -201,6 +201,25 @@ void synchrobeam_kick(
         return;
     }
 
+    // compute GL sigma dependent stuff before per particle block, different for each slice
+    int const use_gl = BeamBeamBiGaussian3DData_get_use_gl(el);
+    int const ad = BeamBeamBiGaussian3DData_get_ad(el);
+    int const num_gl_points       = BeamBeamBiGaussian3DData_get_num_gl_points(el);
+//    GPUGLMEM double const* gl_XX  = BeamBeamBiGaussian3DData_getp1_gl_XX(el, i_slice*num_gl_points); // array of n_slices*num_gl_points
+//    GPUGLMEM double const* gl_YY  = BeamBeamBiGaussian3DData_getp1_gl_YY(el, i_slice*num_gl_points);
+//    GPUGLMEM double const* gl_XY  = BeamBeamBiGaussian3DData_getp1_gl_XY(el, i_slice*num_gl_points);
+//    GPUGLMEM double const* gl_Wxx = BeamBeamBiGaussian3DData_getp1_gl_Wxx(el, i_slice*num_gl_points);
+//    GPUGLMEM double const* gl_Wyy = BeamBeamBiGaussian3DData_getp1_gl_Wyy(el, i_slice*num_gl_points);
+//    GPUGLMEM double const* gl_Wxy = BeamBeamBiGaussian3DData_getp1_gl_Wxy(el, i_slice*num_gl_points);
+//    double const gl_pref          = BeamBeamBiGaussian3DData_get_gl_pref(el, i_slice); // array of n_slices
+//    double const gl_pref_xy       = BeamBeamBiGaussian3DData_get_gl_pref_xy(el, i_slice);
+    GPUGLMEM double const* ONE_MINUS_U2  = BeamBeamBiGaussian3DData_getp1_ONE_MINUS_U2(el, 0); // array of num_gl_points
+    GPUGLMEM double const* U2            = BeamBeamBiGaussian3DData_getp1_U2(el, 0);
+    GPUGLMEM double const* U4            = BeamBeamBiGaussian3DData_getp1_U4(el, 0);
+    GPUGLMEM double const* HALF_U2       = BeamBeamBiGaussian3DData_getp1_HALF_U2(el, 0);
+    GPUGLMEM double const* U_W           = BeamBeamBiGaussian3DData_getp1_U_W(el, 0);
+
+    // opposing beam slice
     const double x_slice_star = BeamBeamBiGaussian3DData_get_slices_other_beam_x_center_star(el, i_slice);
     const double y_slice_star = BeamBeamBiGaussian3DData_get_slices_other_beam_y_center_star(el, i_slice);
     const double px_slice_star = BeamBeamBiGaussian3DData_get_slices_other_beam_px_center_star(el, i_slice);
@@ -222,63 +241,137 @@ void synchrobeam_kick(
     // Propagate sigma matrix
     double Sig_11_hat_star, Sig_33_hat_star, costheta, sintheta;
     double dS_Sig_11_hat_star, dS_Sig_33_hat_star, dS_costheta, dS_sintheta;
+    double x_bar_hat_star, y_bar_hat_star;
+    double Fx_star, Fy_star, Fz_star;
 
-    // Get strong beam shape at the CP
-    Sigmas_propagate(
-            Sig_11_0,
-            Sig_12_0,
-            Sig_13_0,
-            Sig_14_0,
-            Sig_22_0,
-            Sig_23_0,
-            Sig_24_0,
-            Sig_33_0,
-            Sig_34_0,
-            Sig_44_0,
-            S, threshold_singular, 1,
-            &Sig_11_hat_star, &Sig_33_hat_star,
-            &costheta, &sintheta,
-            &dS_Sig_11_hat_star, &dS_Sig_33_hat_star,
-            &dS_costheta, &dS_sintheta);
+    if(use_gl==0){
+        // Get strong beam shape at the CP
+        Sigmas_propagate(
+                Sig_11_0,
+                Sig_12_0,
+                Sig_13_0,
+                Sig_14_0,
+                Sig_22_0,
+                Sig_23_0,
+                Sig_24_0,
+                Sig_33_0,
+                Sig_34_0,
+                Sig_44_0,
+                S, threshold_singular, 1,
+                &Sig_11_hat_star, &Sig_33_hat_star,
+                &costheta, &sintheta,
+                &dS_Sig_11_hat_star, &dS_Sig_33_hat_star,
+                &dS_costheta, &dS_sintheta);
+    
+        // Evaluate transverse coordinates of the weak baem w.r.t. the strong beam centroid
+        const double x_bar_star = *x_star + *px_star * S - x_slice_star - px_slice_star * S;
+        const double y_bar_star = *y_star + *py_star * S - y_slice_star - py_slice_star * S;
+    
+        // Move to the uncoupled reference frame
+        x_bar_hat_star = x_bar_star*costheta + y_bar_star * sintheta;
+        y_bar_hat_star = -x_bar_star*sintheta + y_bar_star * costheta;
+    
+        // Compute derivatives of the transformation
+        const double dS_x_bar_hat_star = x_bar_star * dS_costheta + y_bar_star * dS_sintheta;
+        const double dS_y_bar_hat_star = -x_bar_star * dS_sintheta + y_bar_star * dS_costheta;
+    
+        // Get transverse fields
+        double Ex, Ey;
+        get_Ex_Ey_gauss(x_bar_hat_star, y_bar_hat_star,
+            sqrt(Sig_11_hat_star), sqrt(Sig_33_hat_star),
+            min_sigma_diff,
+            &Ex, &Ey);
 
-    // Evaluate transverse coordinates of the weak baem w.r.t. the strong beam centroid
-    const double x_bar_star = *x_star + *px_star * S - x_slice_star - px_slice_star * S;
-    const double y_bar_star = *y_star + *py_star * S - y_slice_star - py_slice_star * S;
+ 
+        //compute Gs
+        double Gx, Gy;
+        compute_Gx_Gy(x_bar_hat_star, y_bar_hat_star,
+              sqrt(Sig_11_hat_star), sqrt(Sig_33_hat_star),
+                          min_sigma_diff, Ex, Ey, &Gx, &Gy);
 
-    // Move to the uncoupled reference frame
-    const double x_bar_hat_star = x_bar_star*costheta + y_bar_star * sintheta;
-    const double y_bar_hat_star = -x_bar_star*sintheta + y_bar_star * costheta;
 
-    // Compute derivatives of the transformation
-    const double dS_x_bar_hat_star = x_bar_star * dS_costheta + y_bar_star * dS_sintheta;
-    const double dS_y_bar_hat_star = -x_bar_star * dS_sintheta + y_bar_star * dS_costheta;
+        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_be.txt", "a");
+        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gx, Gy, x_bar_hat_star, y_bar_hat_star, Sig_11_hat_star, Sig_33_hat_star);
+        fclose(fptr3);
 
-    // Get transverse fields
-    double Ex, Ey;
-    get_Ex_Ey_gauss(x_bar_hat_star, y_bar_hat_star,
-        sqrt(Sig_11_hat_star), sqrt(Sig_33_hat_star),
-        min_sigma_diff,
-        &Ex, &Ey);
 
-    //compute Gs
-    double Gx, Gy;
-    compute_Gx_Gy(x_bar_hat_star, y_bar_hat_star,
-          sqrt(Sig_11_hat_star), sqrt(Sig_33_hat_star),
-                      min_sigma_diff, Ex, Ey, &Gx, &Gy);
+    
+        // Compute kicks [1]
+        double Fx_hat_star = Ksl*Ex;
+        double Fy_hat_star = Ksl*Ey;
+        double Gx_hat_star = Ksl*Gx;
+        double Gy_hat_star = Ksl*Gy;
+    
+        // Move kicks to coupled reference frame
+        Fx_star = Fx_hat_star*costheta - Fy_hat_star*sintheta;
+        Fy_star = Fx_hat_star*sintheta + Fy_hat_star*costheta;
+    
+        // Compute longitudinal kick [1]
+        Fz_star = 0.5*(Fx_hat_star*dS_x_bar_hat_star  + Fy_hat_star*dS_y_bar_hat_star+
+                       Gx_hat_star*dS_Sig_11_hat_star + Gy_hat_star*dS_Sig_33_hat_star);
 
-    // Compute kicks [1]
-    double Fx_hat_star = Ksl*Ex;
-    double Fy_hat_star = Ksl*Ey;
-    double Gx_hat_star = Ksl*Gx;
-    double Gy_hat_star = Ksl*Gy;
+    // use GL autodiff
+    }else{
 
-    // Move kicks to coupled reference frame
-    double Fx_star = Fx_hat_star*costheta - Fy_hat_star*sintheta;
-    double Fy_star = Fx_hat_star*sintheta + Fy_hat_star*costheta;
+        // Propagate sigma matrix to CP
+        double const Sig_11 = Sig_11_0 + 2.*Sig_12_0*S+Sig_22_0*S*S;
+        double const Sig_33 = Sig_33_0 + 2.*Sig_34_0*S+Sig_44_0*S*S;
+        double const Sig_13 = Sig_13_0 + (Sig_14_0+Sig_23_0)*S+Sig_24_0*S*S;
 
-    // Compute longitudinal kick [1]
-    double Fz_star = 0.5*(Fx_hat_star*dS_x_bar_hat_star  + Fy_hat_star*dS_y_bar_hat_star+
-                   Gx_hat_star*dS_Sig_11_hat_star + Gy_hat_star*dS_Sig_33_hat_star);
+        // Evaluate transverse coordinates of the weak baem w.r.t. the strong beam centroid
+        const double x_bar_star = *x_star + *px_star * S - x_slice_star - px_slice_star * S;
+        const double y_bar_star = *y_star + *py_star * S - y_slice_star - py_slice_star * S;
+   
+        // this is needed for every macropart has a different CP and S, declare on stack, num_gl_points known at compile time
+        double gl_XX[num_gl_points];
+        double gl_YY[num_gl_points];
+        double gl_XY[num_gl_points];
+        double gl_Wxx[num_gl_points];
+        double gl_Wyy[num_gl_points];
+        double gl_Wxy[num_gl_points];
+        double gl_pref, gl_pref_xy;
+        refresh_gl_tables(num_gl_points, Sig_11, Sig_33, Sig_13,
+            ONE_MINUS_U2, U2, U4, HALF_U2, U_W,
+            gl_XX, gl_YY, gl_XY, gl_Wxx, gl_Wyy, gl_Wxy, &gl_pref, &gl_pref_xy); 
+ 
+        // Get transverse fields with GL kernel (here i could use get_Ex_Ey_gauss_gl if the cov=0 but that is a branch)
+        double Ex, Ey, Gxx, Gyy, Gxy;
+
+        get_Ex_Ey_gauss_gl_6d(x_bar_star, y_bar_star,
+        sqrt(Sig_11), gl_XX, gl_YY, gl_XY, 
+        gl_Wxx, gl_Wyy, gl_Wxy, 
+        gl_pref, gl_pref_xy, num_gl_points,
+        &Ex, &Ey, &Gxx, &Gyy, &Gxy);
+   
+        FILE *fptr3 = fopen("/home/pkicsiny/pkicsiny/projects/autodiff/notebooks_pc101697/test_gl.txt", "a");
+        fprintf(fptr3, "%d, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e, %16e\n", use_gl, Ex, Ey, Gxx, Gyy, Gxy, x_bar_star, y_bar_star, Sig_11, Sig_33);
+        fclose(fptr3);                                                                            
+
+        // Compute kicks [1]
+        Fx_star  = Ksl*Ex;
+        Fy_star  = Ksl*Ey;
+        double Gxx_star = Ksl*Gxx;
+        double Gyy_star = Ksl*Gyy;
+        double Gxy_star = Ksl*Gxy;
+
+        // Compute longitudinal kick [1]
+
+        double dS_x_bar_star = *px_star - px_slice_star;
+        double dS_y_bar_star = *py_star - py_slice_star;
+        double dS_Sig_11_star = 2.*Sig_12_0 + 2.*Sig_22_0*S;
+        double dS_Sig_33_star = 2.*Sig_34_0 + 2.*Sig_44_0*S; 
+        double dS_Sig_13_star = (Sig_14_0+Sig_23_0) + 2.*Sig_24_0*S;
+
+        Fz_star = 0.5*(Fx_star*dS_x_bar_star  + Fy_star*dS_y_bar_star+
+                       Gxx_star*dS_Sig_11_star + Gyy_star*dS_Sig_33_star + Gxy_star*dS_Sig_13_star);
+
+
+        x_bar_hat_star = x_bar_star;
+        y_bar_hat_star = y_bar_star;
+        Sig_11_hat_star = Sig_11;
+        Sig_33_hat_star = Sig_33;
+
+    }
 
     double rho = 0.0, wgt = 0.0;
 

@@ -186,6 +186,24 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
          #lumi
          'flag_luminosity': xo.Int64,
 
+        # ad
+        'use_gl':        xo.Int32,
+        'num_gl_points': xo.Int32,
+        'U2':            xo.Float64[:],
+        'U4':            xo.Float64[:],
+        'ONE_MINUS_U2':  xo.Float64[:],
+        'HALF_U2':       xo.Float64[:],
+        'U_W':           xo.Float64[:], 
+        'gl_XX':          xo.Float64[:],
+        'gl_YY':          xo.Float64[:],
+        'gl_XY':          xo.Float64[:],
+        'gl_Wxx':         xo.Float64[:],
+        'gl_Wyy':         xo.Float64[:],
+        'gl_Wxy':         xo.Float64[:],
+        'gl_pref':        xo.Float64[:],
+        'gl_pref_xy':     xo.Float64[:],
+         'ad':           xo.Int32,
+
     }
 
     _internal_record_class = BeamBeamBiGaussian3DRecord
@@ -289,6 +307,11 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
 
                     min_sigma_diff=1e-10,
                     threshold_singular = 1e-28,
+
+                    use_gl=0,
+                    num_gl_points=128,
+                    tanh_cc=20,
+                    ad=0,
 
                     old_interface=None,
 
@@ -402,7 +425,7 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
 
         n_slices = len(slices_other_beam_num_particles)
 
-        self._allocate_xobject(n_slices, **kwargs)
+        self._allocate_xobject(n_slices, num_gl_points, **kwargs)
 
         if config_for_update is not None:
             self.partner_moments = self._buffer.context.nplike_lib.zeros(
@@ -485,7 +508,13 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
         self.min_sigma_diff = min_sigma_diff
         self.threshold_singular = threshold_singular
 
-    def _allocate_xobject(self, n_slices, **kwargs):
+        #GL
+        self.use_gl = use_gl
+        self.init_gl_tables(num_gl_points, tanh_cc)
+        self.num_gl_points = num_gl_points
+        self.ad = ad
+
+    def _allocate_xobject(self, n_slices, num_gl_points, **kwargs):
         self.xoinitialize(
             slices_other_beam_Sigma_11_star=n_slices,
             slices_other_beam_Sigma_12_star=n_slices,
@@ -509,8 +538,98 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
             slices_other_beam_sqrtSigma_11_beamstrahlung=n_slices,
             slices_other_beam_sqrtSigma_33_beamstrahlung=n_slices,
             slices_other_beam_sqrtSigma_55_beamstrahlung=n_slices,
+            U2=num_gl_points, # autodiff
+            U4=num_gl_points,
+            ONE_MINUS_U2=num_gl_points,
+            HALF_U2=num_gl_points,
+            U_W=num_gl_points,
+            gl_XX=n_slices*num_gl_points,
+            gl_YY=n_slices*num_gl_points,
+            gl_XY=n_slices*num_gl_points,
+            gl_Wxx=n_slices*num_gl_points,
+            gl_Wyy=n_slices*num_gl_points,
+            gl_Wxy=n_slices*num_gl_points,
+            gl_pref=n_slices,
+            gl_pref_xy=n_slices,
             **kwargs
             )
+
+    def get_gl_tanh(self, N=128, c=20):
+        t_nodes, t_weights = np.polynomial.legendre.leggauss(N)
+        v_nodes = 0.5 * (t_nodes + 1.0)
+        v_weights = 0.5 * t_weights
+        if c == 0:
+            return v_nodes, v_weights
+        tanh_half_c = np.tanh(0.5 * c)
+        u_nodes = 0.5 * (1.0 + np.tanh(c * (v_nodes - 0.5)) / tanh_half_c)
+        phi_prime = (
+            (0.5 * c / tanh_half_c) * (1.0 / np.cosh(c * (v_nodes - 0.5))) ** 2
+        )
+        u_weights = v_weights * phi_prime
+        return u_nodes, u_weights # arrays of size N
+                                                                                           
+    def init_gl_tables(self, num_points, cc):
+        if self.use_gl==1:
+            u_nodes, u_weights = self.get_gl_tanh(num_points, c=cc)
+            self.U2           = self._arr2ctx(u_nodes * u_nodes)
+            self.U4           = self._arr2ctx(self.U2 * self.U2)
+            self.ONE_MINUS_U2 = self._arr2ctx(1.0 - self.U2)
+            self.HALF_U2      = self._arr2ctx(0.5 * self.U2)
+            self.U_W          = self._arr2ctx(u_nodes * u_weights)
+            self.refresh_gl_tables()
+        else:
+            self.U2          [:] = 0
+            self.U4          [:] = 0
+            self.ONE_MINUS_U2[:] = 0
+            self.HALF_U2     [:] = 0    
+            self.U_W         [:] = 0         
+            self.gl_XX       [:] = 0
+            self.gl_YY       [:] = 0
+            self.gl_XY       [:] = 0
+            self.gl_Wxx      [:] = 0
+            self.gl_Wyy      [:] = 0
+            self.gl_Wxy      [:] = 0
+            self.pref            = 0
+            self.pref_kappa      = 0
+                                                                                           
+    def refresh_gl_tables(self):
+        # assumes sigmas in boosted frame, size n_slices
+        sx2 = self.slices_other_beam_Sigma_11_star # this has to be at CP
+        sy2 = self.slices_other_beam_Sigma_33_star
+        cov_xy = self.slices_other_beam_Sigma_13_star
+        inv_sx2 = 1.0 / sx2
+        r = sy2 * inv_sx2
+        kappa = cov_xy * inv_sx2
+
+        # reshape for array operation
+        inv_sx2_2d = inv_sx2[:, None]
+        r_2d = r[:, None]
+        kappa_2d = kappa[:, None]
+
+        # size n_slices*num_gl_points
+        d_tilde_2d = self.ONE_MINUS_U2 + self.U2 * r_2d
+        inv_g_2d = 1.0 / (d_tilde_2d - kappa_2d**2 * self.U4)
+        inv_g3_2d = np.sqrt(inv_g_2d)*inv_g_2d
+
+        YY_2d = self.HALF_U2 * inv_sx2_2d * inv_g_2d
+        gl_XX_2d   = YY_2d * d_tilde_2d
+        gl_YY_2d   = YY_2d
+        gl_XY_2d   = YY_2d * 2 * kappa_2d * self.U2
+        gl_Wyy_2d  = self.U_W * inv_g3_2d
+        gl_Wxx_2d  = gl_Wyy_2d * d_tilde_2d
+        gl_Wxy_2d  = gl_Wyy_2d * self.U2
+        gl_pref_2d    = 17975103572.341595 * inv_sx2_2d
+        gl_pref_xy_2d = gl_pref_2d * kappa_2d
+
+        # flatten and to context, n_slices*num_gl_points
+        self.gl_XX    = self._arr2ctx( gl_XX_2d  .ravel())
+        self.gl_YY    = self._arr2ctx( gl_YY_2d  .ravel())
+        self.gl_XY    = self._arr2ctx( gl_XY_2d  .ravel())
+        self.gl_Wyy  = self._arr2ctx( gl_Wyy_2d .ravel())
+        self.gl_Wxx  = self._arr2ctx( gl_Wxx_2d .ravel())
+        self.gl_Wxy  = self._arr2ctx( gl_Wxy_2d .ravel())
+        self.gl_pref    = self._arr2ctx( gl_pref_2d   .ravel())
+        self.gl_pref_xy = self._arr2ctx( gl_pref_xy_2d.ravel())
 
     def _init_beamstrahlung(self,
             flag_beamstrahlung,
@@ -755,6 +874,10 @@ class BeamBeamBiGaussian3D(xt.BeamElement):
         self.slices_other_beam_Sigma_33_star = self._arr2ctx(self.partner_moments[14*self.num_slices_other_beam:15*self.num_slices_other_beam])
         self.slices_other_beam_Sigma_34_star = self._arr2ctx(self.partner_moments[15*self.num_slices_other_beam:16*self.num_slices_other_beam]) * (-1.0)
         self.slices_other_beam_Sigma_44_star = self._arr2ctx(self.partner_moments[16*self.num_slices_other_beam:17*self.num_slices_other_beam])
+
+        # ad refresh sigma dependent quantities
+        if self.use_gl:
+            self.refresh_gl_tables()
 
     def _track_non_collective(self, particles, i_slices=None):
 

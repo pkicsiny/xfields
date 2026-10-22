@@ -42,11 +42,6 @@ void BeamBeamBiGaussian2D_track_local_particle(
 
     int const use_gl = BeamBeamBiGaussian2DData_get_use_gl(el);
 
-    //FILE *fptr3 = fopen("/Users/pkicsiny/work/projects/autodiff/notebooks/test_gl.txt", "a");
-    //fprintf(fptr3, "GL=%d\n", use_gl);
-    //fclose(fptr3);
-
-
     // compute GL sigma dependent stuff before per particle block
     GPUGLMEM double const* gl_A  = BeamBeamBiGaussian2DData_getp1_gl_A(el, 0);
     GPUGLMEM double const* gl_B  = BeamBeamBiGaussian2DData_getp1_gl_B(el, 0);
